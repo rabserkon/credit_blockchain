@@ -1,0 +1,11 @@
+*.iml
+*.jks
+*.crt
+*.key
+*.pem
+*.p12
+
+**/target/
+
+.env
+.idea/
