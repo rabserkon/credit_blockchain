@@ -37,10 +37,10 @@ public class Wallet implements Serializable{
     public byte[] signBlock(Block block) throws Exception {
         ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
         ObjectOutputStream objectStream = new ObjectOutputStream(byteStream);
-        objectStream.writeObject(block);
+        objectStream.writeObject(block.getData());
         byte[] blockData = byteStream.toByteArray();
         // Создание объекта для создания подписи с использованием закрытого ключа
-        Signature signature = Signature.getInstance("SHA256withRSA");
+        Signature signature = Signature.getInstance("SHA256withECDSA");
         signature.initSign(privateKey);
         // Обновление объекта для создания подписи данными блока
         signature.update(blockData);
@@ -86,7 +86,7 @@ public class Wallet implements Serializable{
 
 
     // Создание и подписание транзакции
-    public Transaction createTransaction(PublicKey recipient, int amount) {
+    public Transaction createTransaction(PublicKey recipient, float amount) {
         if (amount <= 0) {
             System.out.println("Неверная сумма для транзакции.");
             return null;

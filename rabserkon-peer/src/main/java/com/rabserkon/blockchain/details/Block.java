@@ -9,20 +9,35 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.*;
 
 public class Block implements Serializable {
-    private final long blockIndex;
     private static final long serialVersionUID = 1L;
+
+    private final long blockIndex;
     private String hash; // Хэш блока
     private int minerRewardAmount;
     private String previousHash; // Хэш предыдущего блока
-    private PublicKey creator; // Идентификатор создателя блока (участника PoS)
-    private int stake; // Количество стейка у создателя блока
+    private final PublicKey creator; // Идентификатор создателя блока (участника PoS)
+    private final int stake; // Количество стейка у создателя блока
     private ArrayList<Transaction> transactions = new ArrayList<>(); // Список транзакций
-    private long timeStamp; // Временная метка
+    private final long timeStamp; // Временная метка
     private int nonce; // Нонс (для Proof-of-Work)
-    private String id; // Идентификатор блока (автоматически генерируется)
+    private final String id; // Идентификатор блока (автоматически генерируется)
     private byte[] signature;
-    private Validator validator;
+    private PublicKey publicKey;
 
+    public Block(long blockIndex, String hash, int minerRewardAmount, String previousHash, PublicKey creator, int stake, ArrayList<Transaction> transactions, long timeStamp, int nonce, String id, byte[] signature, PublicKey publicKey) {
+        this.blockIndex = blockIndex;
+        this.hash = hash;
+        this.minerRewardAmount = minerRewardAmount;
+        this.previousHash = previousHash;
+        this.creator = creator;
+        this.stake = stake;
+        this.transactions = transactions;
+        this.timeStamp = timeStamp;
+        this.nonce = nonce;
+        this.id = id;
+        this.signature = signature;
+        this.publicKey = publicKey;
+    }
 
     public Block(Block block, Validator validator, int stake) {
         this.blockIndex = block.blockIndex + 1;
@@ -32,6 +47,7 @@ public class Block implements Serializable {
         this.stake = stake;
         this.id = generateBlockId(block.getId()); // Вычисляем id на основе предыдущего блока
         this.hash = calculateHash();
+        this.signature = null;
     }
 
     public Block( Validator validator, int stake) {
@@ -42,6 +58,7 @@ public class Block implements Serializable {
         this.stake = stake;
         this.id = generateBlockId("0"); // Вычисляем id на основе предыдущего блока
         this.hash = calculateHash();
+        this.signature = null;
     }
 
     // Метод для вычисления id на основе предыдущего блока
@@ -55,60 +72,19 @@ public class Block implements Serializable {
         return StringUtil.applySha256(data);
     }
 
-    // Метод для майнинга блока (Proof-of-Stake)
-    public void mineBlock(List<Validator> validators, int difficulty) throws MineBlockException {
-        // Выбор участника для создания блока на основе PoS
-        Random random = new Random();
-        int selectedParticipantIndex = random.nextInt(validators.size());
-        Validator selectedValidator = validators.get(selectedParticipantIndex);
-
-        // Проверка стейка участника
-        if (selectedValidator.getStake() >= difficulty) {
-            this.creator = selectedValidator.getPublicKey();
-            this.stake = selectedValidator.getStake();
-            int totalReward = calculateTotalBlockReward(selectedValidator.getStake()); // Рассчитать общее вознаграждение за блок
-
-            // Создаем "coinbase" транзакцию для майнера
-            Transaction minerRewardTransaction = createCoinbaseTransaction(selectedValidator, totalReward);
-            this.addTransaction(minerRewardTransaction);
-
-            if (transactions.size() == 0){
-                throw new MineBlockException("The block does not contain transactions: " + transactions.size());
-            }
-            // Процесс создания блока
-            try {
-                String target = new String(new char[difficulty]).replace('\0', '0');
-                while (!hash.substring(0, difficulty).equals(target)) {
-                    nonce++;
-                    hash = calculateHash();
-
-                }
-                System.out.println("The block was created successfully: " + hash);
-            } catch (Exception e) {
-                hash = null;
-                throw new MineBlockException(e.getMessage());
-            }
-
-        } else {
-            System.out.println("Выбранный участник не имеет достаточного стейка для создания блока.");
-        }
-    }
-
     // Метод для создания пустого блока PoS
-    public static Block createEmptyPoSBlock(List<Validator> validators, Block previousBlock, float stake) throws BlockCreationException {
-        // Выбор участника для создания блока на основе PoS и его стейка
-        Validator selectedValidator = selectValidatorBasedOnStake(validators);
-
+    public static Block createEmptyPoSBlock(Validator selectedValidator, List<Block> blocks, float stake) throws BlockCreationException {
         if (selectedValidator != null) {
             // Создание блока
-            Block block = new Block(previousBlock, selectedValidator,10);
+            Block block = blocks.isEmpty() ? new Block(selectedValidator, 10) :
+                    new Block(blocks.get(blocks.size() - 1), selectedValidator, 10);
             return block; // Возвращаем созданный блок без транзакций и подписи
         } else {
             throw new BlockCreationException("No eligible validator found to create the block.");
         }
     }
 
-    public Transaction createCoinbaseTransaction(Validator validator, int blockReward) {
+    private Transaction createCoinbaseTransaction(Validator validator, int blockReward) {
         Transaction coinbaseTransaction = null;
 
         PublicKey publicKey = validator.getPublicKey();
@@ -150,6 +126,7 @@ public class Block implements Serializable {
     // Добавление транзакции в блок
     public boolean addTransaction(Transaction transaction) {
         // Проверяем, что транзакция корректна и подписана
+
         if (transaction == null ) {
             System.out.println("Ошибка при добавлении транзакции в блок.");
             return false;
@@ -167,9 +144,9 @@ public class Block implements Serializable {
             return false;
         }
         if ( !isBalanceValid(blocks, transaction) || blocks.size() == 0 ) {
-            System.out.println("bad");
             return false;
         }
+        System.out.println("work");
         transactions.add(transaction);
         System.out.println("The transaction was successfully added to the block.");
         return true;
@@ -244,7 +221,6 @@ public class Block implements Serializable {
     public void signBlock(byte[] signature, Block block) throws Exception, InvalidSignatureException {
         // Хеширование данных блока
         String blockDataHash = calculateBlockDataHash();
-
         // Проверка, что хеш данных совпадает с ожидаемым
         if (blockDataHash.equals(block.calculateBlockDataHash())) {
             // Хеш данных совпадает, можно установить подпись
@@ -260,16 +236,16 @@ public class Block implements Serializable {
     }
 
 
-    public boolean verifySignature(Validator validator) throws Exception {
+    public boolean verifySignature(PublicKey publicKey) throws Exception {
         try {
             // Создание объекта для проверки подписи с использованием публичного ключа
-            Signature verifier = Signature.getInstance("SHA256withRSA");
-            verifier.initVerify(validator.getPublicKey());
+            Signature verifier = Signature.getInstance("SHA256withECDSA");
+            verifier.initVerify(publicKey);
 
             // Сериализация блока (или другие данные блока) в байтовый массив
             ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
             ObjectOutputStream objectStream = new ObjectOutputStream(byteStream);
-            objectStream.writeObject(this);
+            objectStream.writeObject(this.getData());
             byte[] blockData = byteStream.toByteArray();
 
             // Обновление объекта для проверки подписи данными блока
@@ -315,6 +291,31 @@ public class Block implements Serializable {
 
     public ArrayList<Transaction> getTransactions() {
         return transactions;
+    }
+
+    public Block getData() {
+        try {
+            // Создаем временную копию блока без поля signature
+            Block blockWithoutSignature = new Block(
+                    this.blockIndex,
+                    this.hash,
+                    this.minerRewardAmount,
+                    this.previousHash,
+                    this.creator,
+                    this.stake,
+                    this.transactions,
+                    this.timeStamp,
+                    this.nonce,
+                    this.id,
+                    null,
+                    this.publicKey
+            );
+
+            return blockWithoutSignature;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null; // Обработка ошибки
+        }
     }
 }
 
